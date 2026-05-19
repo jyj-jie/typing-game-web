@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>南湾沙塘布学校科技节班级打字比赛 - 管理端</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="toastStack" class="toast-stack"></div>
+
+    <!-- 登录视图 -->
+    <main id="authView" class="page-shell auth-shell">
+      <section class="app-card">
+        <div class="brand">
+          <div>
+            <h1><span class="emoji">🎯</span> 裁判管理端</h1>
+            <p>南湾沙塘布学校科技节班级打字比赛</p>
+          </div>
+          <span id="adminSocketBadge" class="badge"><span class="status-dot offline"></span> 连接中</span>
+        </div>
+
+        <form id="adminLoginForm" class="field-group" autocomplete="off">
+          <div class="field">
+            <label for="adminPassword">🔑 管理密码</label>
+            <input id="adminPassword" type="password" placeholder="请输入管理密码" required />
+          </div>
+          <div class="action-row">
+            <button type="submit">进入控制台 🎮</button>
+          </div>
+          <div id="adminLoginError" class="error-text"></div>
+          <div class="hint">默认密码可在 `server.js` 中修改，登录后可控制比赛并导出成绩。</div>
+        </form>
+      </section>
+    </main>
+
+    <!-- 控制台视图 -->
+    <main id="dashboardView" class="dashboard-shell hidden">
+      <header class="dashboard-header">
+        <div>
+          <div class="badge">🎛️ 管理控制台</div>
+          <div class="screen-title">
+            <h1>班级打字比赛实时管理</h1>
+            <p id="raceHeadline">当前状态：等待开始 ｜ 当前文章：未选择</p>
+          </div>
+        </div>
+        <div class="action-row header-actions">
+          <a class="button secondary" href="/screen.html" target="_blank" rel="noreferrer">📺 打开排行榜大屏</a>
+          <button id="exportButton" class="secondary" type="button">📥 导出 CSV</button>
+        </div>
+      </header>
+
+      <section class="dashboard-grid dashboard-main-grid">
+        <div class="panel control-panel">
+          <h3>🎮 比赛控制面板</h3>
+          <div class="field-group">
+            <div class="field">
+              <label for="articleSelect">📄 比赛文章</label>
+              <select id="articleSelect"></select>
+            </div>
+            <div class="field import-field">
+              <label for="articleImportTitle">📝 导入文章标题</label>
+              <input id="articleImportTitle" type="text" placeholder="请输入比赛文章标题" />
+            </div>
+            <div class="action-row import-actions">
+              <label class="button secondary file-button" for="articleImportFile">📄 选择 TXT 文件</label>
+              <input id="articleImportFile" type="file" accept=".txt" class="hidden-file-input" />
+              <button id="importArticleButton" type="button">导入文章</button>
+              <button id="clearArticleImportButton" type="button" class="danger" style="margin-left:4px">🗑️ 清除</button>
+            </div>
+            <div class="field import-field">
+              <label for="rosterImportFile">👥 导入学生名单</label>
+              <div class="hint">Excel 仅需包含“班级”和“学生姓名”两列。</div>
+            </div>
+            <div class="action-row import-actions">
+              <label class="button secondary file-button" for="rosterImportFile">📊 选择 Excel 文件</label>
+              <input id="rosterImportFile" type="file" accept=".xlsx,.xls" class="hidden-file-input" />
+              <button id="importRosterButton" type="button">一键导入学生名单</button>
+              <button id="clearRosterButton" type="button" class="danger" style="margin-left:4px">🗑️ 清除名单</button>
+            </div>
+            <div id="rosterStatsPanel" class="roster-stats-panel hidden">
+              <div id="rosterStatsToggle" class="roster-stats-summary roster-stats-clickable">
+                <span>
+                  <span id="rosterTotalStudents" class="roster-stat-number">0</span> 名学生 ·
+                  <span id="rosterTotalClasses" class="roster-stat-number">0</span> 个班级已导入
+                </span>
+                <span id="rosterStatsArrow" class="roster-stats-arrow">▶</span>
+              </div>
+              <div id="rosterStatsList" class="roster-stats-list hidden"></div>
+            </div>
+            <div class="field">
+              <label for="durationInput">⏱️ 比赛时长（分钟）</label>
+              <input id="durationInput" type="number" min="1" max="30" step="1" value="5" />
+            </div>
+            <div class="action-row">
+              <button id="startButton" type="button">▶️ 开始比赛</button>
+              <button id="pauseButton" type="button" class="warn">⏸️ 暂停比赛</button>
+              <button id="resumeButton" type="button" class="secondary">▶️ 继续比赛</button>
+              <button id="endButton" type="button" class="danger">⏹️ 提前结束</button>
+            </div>
+          </div>
+
+          <div class="wait-grid" style="margin-top: 18px">
+            <div class="mini-card">
+              <span class="muted">📊 当前状态</span>
+              <strong id="statusValue">等待开始</strong>
+            </div>
+            <div class="mini-card">
+              <span class="muted">⏳ 剩余时间</span>
+              <strong id="remainingValue">05:00</strong>
+            </div>
+            <div class="mini-card">
+              <span class="muted">👥 在线选手</span>
+              <strong id="onlineCount">0</strong>
+            </div>
+            <div class="mini-card">
+              <span class="muted">🏫 参赛班级</span>
+              <strong id="classCount">0</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="dashboard-panels">
+          <section class="panel equal-height-panel">
+            <h3>🏆 班级总分柱状图</h3>
+            <div id="classChart" class="bar-chart"></div>
+          </section>
+
+          <section class="panel equal-height-panel">
+            <h3>⚡ 个人实时速度榜 Top10</h3>
+            <div id="topPlayers" class="leaderboard-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="table-card">
+        <h3>👥 在线选手状态</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>班级</th>
+                <th>姓名</th>
+                <th>在线</th>
+                <th>心跳时间</th>
+                <th>进度</th>
+                <th>速度</th>
+                <th>准确率</th>
+                <th>得分</th>
+                <th>名次</th>
+              </tr>
+            </thead>
+            <tbody id="playerTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="/vendor/xlsx/xlsx.full.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/admin.js"></script>
+  </body>
+</html>

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>南湾沙塘布学校科技节班级打字比赛 - 参赛端</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="toastStack" class="toast-stack"></div>
+
+    <!-- 登录视图 -->
+    <main id="loginView" class="page-shell">
+      <section class="app-card">
+        <div class="brand">
+          <div>
+            <h1><span class="emoji">⌨️</span> 南湾沙塘布学校科技节</h1>
+            <p>南湾沙塘布学校科技节班级打字比赛参赛端 <span class="emoji">✨</span></p>
+          </div>
+          <span id="socketBadge" class="badge"><span class="status-dot offline"></span> 连接中</span>
+        </div>
+
+        <form id="loginForm" class="field-group" autocomplete="off">
+          <div class="field">
+            <label for="className">📋 选择班级</label>
+            <select id="className" required></select>
+          </div>
+
+          <div class="field">
+            <label>👤 选择姓名</label>
+            <div id="selectedName" class="selected-name">请先选择班级</div>
+            <div id="studentNameList" class="name-button-list"></div>
+          </div>
+
+          <div class="action-row">
+            <button id="loginButton" type="submit">进入等待区 🚀</button>
+          </div>
+          <div id="loginError" class="error-text"></div>
+          <div class="hint">
+            选择班级后，点击自己姓名即可完成登录并进入等待状态。
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <!-- 等待视图 -->
+    <main id="waitView" class="wait-shell hidden">
+      <section class="wait-panel panel">
+        <div class="badge">📌 等待区</div>
+        <h2>⏳ 等待裁判开始比赛...</h2>
+        <p class="subtext">比赛开始后将自动进入比赛页面，请保持本页打开并确保网络畅通。</p>
+        <div class="wait-grid">
+          <div class="mini-card">
+            <span class="muted">🏫 班级</span>
+            <strong id="waitClass">-</strong>
+          </div>
+          <div class="mini-card">
+            <span class="muted">👤 姓名</span>
+            <strong id="waitName">-</strong>
+          </div>
+          <div class="mini-card">
+            <span class="muted">📶 当前状态</span>
+            <strong id="waitStatus">等待开始</strong>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- 比赛视图 -->
+    <main id="raceView" class="page-shell hidden">
+      <div class="practice-container">
+        <div class="header practice-header">
+          <div class="header-side">
+            <div class="badge">👤 <span id="raceIdentity">-</span></div>
+          </div>
+          <h1><span class="emoji">⌨️</span> 南湾沙塘布学校科技节班级打字比赛 <span class="emoji">✨</span></h1>
+          <div class="header-side header-side-right">
+            <div id="raceStatusText" class="badge">比赛进行中</div>
+          </div>
+        </div>
+
+        <div class="practice-section">
+          <div class="text-display">
+            <div class="content-header">
+              <div>
+                <strong id="articleTitle">📄 比赛文章</strong>
+                <div class="hint">参考打字练习模式：每行原文下方显示一行输入框，实时展示你已输入的文字。</div>
+              </div>
+              <div class="badge">⌨️ 中文拼音输入已支持</div>
+            </div>
+
+            <div id="articleDisplay" class="typing-article" tabindex="0"></div>
+          </div>
+        </div>
+
+        <div class="stats-section">
+          <div class="stat-item">
+            <div class="stat-icon time">时</div>
+            <span>剩余时间</span>
+            <span class="stat-value" id="remainingTime">05:00</span>
+          </div>
+          <div class="stat-item">
+            <div class="stat-icon speed">速</div>
+            <span>速度</span>
+            <span class="stat-value" id="speedValue">0.00</span>
+          </div>
+          <div class="stat-item">
+            <div class="stat-icon accuracy">准</div>
+            <span>正确率</span>
+            <span class="stat-value" id="accuracyValue">100.00%</span>
+          </div>
+          <div class="stat-item stat-item-progress">
+            <div class="stat-icon progress">进</div>
+            <span>进度</span>
+            <span class="stat-value" id="progressValue">0.00%</span>
+            <div class="progress-wrap compact-progress">
+              <div class="progress-bar">
+                <div id="progressFill" class="progress-fill"></div>
+              </div>
+            </div>
+          </div>
+          <div class="stat-item stat-item-wide">
+            <span class="stat-value" id="warningText">已输入 0 字 / 可按回车切换到下一行</span>
+          </div>
+        </div>
+
+        <section class="tips" style="margin-top: 14px">
+          <h3>💡 小提示</h3>
+          <ul>
+            <li>保持正确的坐姿，眼睛与屏幕保持适当距离</li>
+            <li>尽量不看键盘，熟悉键位位置</li>
+            <li>先求准确，再求速度</li>
+            <li>当前页可直接查看原文和输入内容，翻页后继续输入即可</li>
+          </ul>
+        </section>
+      </div>
+    </main>
+
+    <!-- 结果视图 -->
+    <main id="resultView" class="result-shell hidden">
+      <section class="result-card">
+        <div class="badge">🏆 比赛结束</div>
+        <h2>个人成绩</h2>
+        <div id="resultSummary" class="subtext">系统正在生成结果...</div>
+        <div id="resultGrid" class="result-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-top: 20px"></div>
+        <div class="action-row" style="margin-top: 24px; justify-content: center">
+          <button id="backToWait" type="button" class="secondary">返回等待状态</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/player.js"></script>
+  </body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "name": "typing-race-school-system",
+  "version": "1.0.0",
+  "description": "南湾沙塘布学校科技节班级打字比赛网页系统",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "typing-race",
+    "express",
+    "socket.io",
+    "school"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1",
+    "xlsx": "^0.18.5"
+  }
+}

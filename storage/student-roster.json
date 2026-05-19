@@ -1,0 +1,77 @@
+{
+  "savedAt": "2026-05-19T09:17:05.972Z",
+  "students": [
+    {
+      "className": "1年级1班",
+      "playerName": "111"
+    },
+    {
+      "className": "1年级2班",
+      "playerName": "112"
+    },
+    {
+      "className": "1年级3班",
+      "playerName": "113"
+    },
+    {
+      "className": "1年级4班",
+      "playerName": "114"
+    },
+    {
+      "className": "1年级5班",
+      "playerName": "115"
+    },
+    {
+      "className": "1年级6班",
+      "playerName": "116"
+    },
+    {
+      "className": "2年级1班",
+      "playerName": "117"
+    },
+    {
+      "className": "2年级2班",
+      "playerName": "118"
+    },
+    {
+      "className": "2年级3班",
+      "playerName": "119"
+    },
+    {
+      "className": "2年级4班",
+      "playerName": "120"
+    },
+    {
+      "className": "2年级5班",
+      "playerName": "121"
+    },
+    {
+      "className": "2年级6班",
+      "playerName": "122"
+    },
+    {
+      "className": "3年级1班",
+      "playerName": "123"
+    },
+    {
+      "className": "3年级2班",
+      "playerName": "124"
+    },
+    {
+      "className": "3年级3班",
+      "playerName": "125"
+    },
+    {
+      "className": "3年级4班",
+      "playerName": "126"
+    },
+    {
+      "className": "3年级5班",
+      "playerName": "127"
+    },
+    {
+      "className": "3年级6班",
+      "playerName": "128"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>南湾沙塘布学校科技节班级打字比赛 - 大屏排行榜</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="screen-shell">
+      <header class="screen-header">
+        <div class="screen-title">
+          <div class="badge">📺 实时排行榜大屏</div>
+          <h1><span class="emoji">🏆</span> 南湾沙塘布学校科技节班级打字比赛</h1>
+          <p id="screenHeadline">等待裁判开始比赛</p>
+        </div>
+        <div class="badge" id="screenStatus">状态：等待开始</div>
+      </header>
+
+      <section class="screen-grid">
+        <article class="screen-panel equal-height-panel">
+          <h2>🏆 班级总分柱状图</h2>
+          <div id="screenClassChart" class="bar-chart"></div>
+        </article>
+        <article class="screen-panel equal-height-panel">
+          <h2>⚡ 个人实时速度榜 Top10</h2>
+          <div id="screenTopPlayers" class="screen-ranking"></div>
+        </article>
+      </section>
+
+      <footer class="screen-footer">
+        <span id="screenArticle">📄 文章：未开始</span>
+        <span id="screenRemaining">⏳ 剩余时间：05:00</span>
+      </footer>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/screen.js"></script>
+  </body>
+</html>
