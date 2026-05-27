@@ -17,7 +17,7 @@
             <h1><span class="emoji">⌨️</span> 南湾沙塘布学校科技节</h1>
             <p>南湾沙塘布学校科技节班级打字比赛参赛端 <span class="emoji">✨</span></p>
           </div>
-          <span id="socketBadge" class="badge"><span class="status-dot offline"></span> 连接中</span>
+          <span id="socketBadge" class="badge"><span class="status-dot status-yellow"></span> 连接中</span>
         </div>
 
         <form id="loginForm" class="field-group" autocomplete="off">
@@ -30,6 +30,10 @@
             <label>👤 选择姓名</label>
             <div id="selectedName" class="selected-name">请先选择班级</div>
             <div id="studentNameList" class="name-button-list"></div>
+            <div class="temp-add-row" style="margin-top:10px; display:flex; gap:8px; align-items:center">
+              <input id="tempNameInput" type="text" placeholder="姓名不在名单中？在此输入临时添加" style="flex:1; padding:8px 10px; border:1px solid #d0d0d0; border-radius:6px; font-size:14px" />
+              <button id="tempAddButton" type="button" style="padding:8px 14px; font-size:13px; white-space:nowrap">➕ 添加</button>
+            </div>
           </div>
 
           <div class="action-row">
@@ -75,7 +79,7 @@
           </div>
           <h1><span class="emoji">⌨️</span> 南湾沙塘布学校科技节班级打字比赛 <span class="emoji">✨</span></h1>
           <div class="header-side header-side-right">
-            <div id="raceStatusText" class="badge">比赛进行中</div>
+            <div id="raceStatusBadge" class="badge"><span class="status-dot status-yellow"></span> 连接中</div>
           </div>
         </div>
 
@@ -91,6 +95,10 @@
 
             <div id="articleDisplay" class="typing-article" tabindex="0"></div>
           </div>
+        </div>
+
+        <div class="action-row" style="margin: 16px 0; justify-content: center">
+          <button id="submitButton" type="button" class="submit-button">提交</button>
         </div>
 
         <div class="stats-section">

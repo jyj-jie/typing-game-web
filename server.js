@@ -12,57 +12,81 @@ const publicDir = path.join(__dirname, "public");
 const storageDir = path.join(__dirname, "storage");
 const resultFile = path.join(storageDir, "results.json");
 const studentRosterFile = path.join(storageDir, "student-roster.json");
+const articlesFile = path.join(storageDir, "articles.json");
+const checkpointFile = path.join(storageDir, "race-checkpoint.json");
 const vendorXlsxDir = path.join(__dirname, "node_modules", "xlsx", "dist");
 
 const PORT = Number(process.env.PORT || 3000);
-const ADMIN_PASSWORD = "admin123";
-const DEFAULT_DURATION = 5 * 60;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+const DEFAULT_DURATION = 30 * 60;
 const HEARTBEAT_INTERVAL = 2000;
-const DISCONNECT_THRESHOLD = 5000;
+const DISCONNECT_THRESHOLD = Number(process.env.DISCONNECT_THRESHOLD || 15000);
+const SPEED_HISTORY_WINDOW_MS = 60000;
+const RECENT_SPEED_WINDOW_MS = 30000;
+const CHECKPOINT_INTERVAL = Number(process.env.CHECKPOINT_INTERVAL || 10000);
+const MAX_BODY_SIZE = process.env.MAX_BODY_SIZE || "1mb";
+const STATE_BROADCAST_MIN_INTERVAL = 2000;
+const HEARTBEAT_CHECK_INTERVAL = 3000;
+const IDLE_BROADCAST_INTERVAL = 5000;
 
-const classList = Array.from({ length: 6 }, (_, gradeIndex) =>
-  Array.from({ length: 6 }, (_, classIndex) => `${gradeIndex + 1}年级${classIndex + 1}班`)
-).flat();
+let classList = [];
 
-let articles = [
+const BUILT_IN_ARTICLES = [
   {
     id: "article-1",
     title: "我们的校园",
-    content: [
-      "我们的校园很美。每天早晨，太阳刚刚升起，同学们就背着书包来到学校。校门口有两棵大树，树叶在风中轻轻地摇动。老师说，这两棵树已经在这里很多年了，它们每天都看着同学们上学和放学。走进校门，就能看到一个大操场。操场上有红色的跑道和绿色的草地。上体育课的时候，同学们在操场上跑步、跳绳、做游戏。操场旁边是教学楼，一共有五层。我们的教室在三楼，教室里很明亮，有四排整齐的课桌。墙上贴满了同学们的画和字，还有一张很大的中国地图。上课的时候，同学们认真地听老师讲课，一起读书，一起写字，一起做数学题。下课后，同学们有的去操场玩，有的在走廊上聊天，有的在教室里看课外书。学校里还有一个图书馆，里面有很多好看的书。每个星期三下午，老师会带同学们去图书馆看书。我最喜欢看科学书和故事书，每次都能学到新知识。学校食堂的饭菜也很好吃，有米饭、面条、饺子和各种蔬菜。中午休息的时候，同学们在教室里午休，为下午的课做好准备。下午放学时，同学们排好队走到校门口，和老师说再见。我们的校园就像一个温暖的大家庭，每天都有新的快乐和收获。在这里，我们学习知识，结交朋友，健康地成长。"
-    ].join("")
+    content: "我们的校园很美。每天早晨，同学们背着书包来到学校。校门口的大树在风中轻轻摇摆。操场上有红色的跑道，体育课上大家跑步、跳绳、做游戏。教学楼有五层，教室很明亮，墙上贴满了画。上课认真听讲，下课在走廊聊天。图书馆有很多好书，食堂饭菜很香。放学了，我们排好队和老师说再见。校园就是我们的大家，每天都有新收获。"
   },
   {
     id: "article-2",
     title: "我爱大自然",
-    content: [
-      "我们生活的地球是一个美丽的地方。春天，小草从土里钻出来，花儿开了，红的、黄的、白的，五颜六色。小鸟在树枝上唱歌，蝴蝶在花丛中飞来飞去。农民伯伯在田里种下种子，等着秋天收获。夏天，天气很热，知了在树上叫个不停。大树长满了绿油油的叶子，像一把把大伞。小朋友们吃着西瓜和冰淇淋，在树荫下玩耍。池塘里的荷花开了一片，粉色的花瓣非常好看。有时候下大雨，雨后的天空会出现一道彩虹。秋天到了，天气变得凉爽。树叶变成了红色和黄色，一片一片从树上落下来。田野里，稻谷金黄金黄的，农民伯伯忙着收割。果园里，苹果红了，梨子黄了，葡萄紫了，到处都是丰收的景象。冬天，天气很冷，北风呼呼地吹。有时候会下雪，大地一片白，像穿上了新衣服。小朋友们不怕冷，在雪地里堆雪人、打雪仗，玩得很开心。一年四季，大自然都给我们不同的礼物。春天的花，夏天的雨，秋天的果实，冬天的雪，都是美好的。我们每个人都要爱护大自然，不乱扔垃圾，不伤害小动物，多种树多种花。只有保护好环境，地球才能一直美丽下去，我们的孩子也能看到蓝蓝的天、清清的水。"
-    ].join("")
+    content: "春天到了，小草钻出地面，花儿开了，五颜六色真好看。小鸟在枝头唱歌，蝴蝶在花丛中飞来飞去。夏天很热，大树长满绿叶，像一把把大伞。池塘里荷花开了一大片，粉色的花瓣好看极了。秋天来了，天气变凉，树叶变黄变红，一片片落下来。田野里稻谷金黄，果园里果实累累的。冬天北风呼呼吹，有时还会下雪，大地盖上了白被子。小朋友们堆雪人、打雪仗，开心极了。一年四季，大自然送给我们不同的礼物。我们要爱护环境，让地球一直美丽。"
   },
   {
     id: "article-3",
     title: "快乐的一天",
-    content: [
-      "星期天的早晨，阳光照进我的房间。我早早地起了床，因为今天爸爸妈妈要带我去公园玩。吃过早饭后，我穿上最喜欢的运动鞋，背着小背包就出发了。公园离我家不远，走了十几分钟就到了。公园里人很多，有的老人在打太极拳，有的叔叔阿姨在跑步，还有好多小朋友在草地上玩耍。我们先去了湖边，湖水很清，能看到小鱼在水里游来游去。爸爸给我买了一些鱼食，我把鱼食撒到水里，小鱼们马上围过来抢着吃，样子可爱极了。湖面上还有几只白天鹅，它们悠闲地游着，有时低下头喝喝水，有时展开翅膀动一动。看完小鱼和天鹅，我们走到游乐区。游乐区有滑滑梯，有秋千，还有旋转木马。我最喜欢坐旋转木马，选了一匹白色的小马，坐上之后木马随着音乐转了起来。一上一下的感觉真好玩，我笑着向爸爸妈妈招手。从旋转木马下来，我们又一起去坐了小火车。小火车绕公园跑了一圈，沿途看到了花坛、喷泉和小桥。下了小火车，我在草地上跑了一会儿，追着泡泡玩，爸爸吹出来的泡泡在阳光下闪闪发光。玩累了，妈妈铺好垫子，我们坐在草地上吃零食。妈妈带了面包、水果和饼干。我一边吃东西，一边看天上的云朵。云朵白白的，有的像小狗，有的像棉花糖。吃完东西，我们又在公园里散步。花坛里的花儿开得正好，有月季、百合，还有许多我叫不出名字的小花。蜜蜂在花丛中忙碌地采蜜。时间过得真快，太阳慢慢往西边落下去了。爸爸说该回家了，我有点舍不得走，但想到今天过得这么开心，心里又觉得很满足。回家的路上，我一直回想着这一天的快乐时光。"
-    ].join("")
+    content: "星期天早晨，阳光照进房间，我早早起床，因为爸爸妈妈要带我去公园玩。我穿上最喜欢的运动鞋，背上小背包就出发了。公园里人很多，我们先去了湖边。湖水很清，能看到小鱼游来游去。爸爸买了鱼食，我撒进水里，小鱼围过来抢着吃，样子可爱极了。看完鱼，我们去了游乐区坐了旋转木马。我选了一匹白色小马，木马随着音乐转起来真好玩。玩累了，妈妈铺好垫子，我们在草地上吃零食。我一边吃一边看天上的云朵，有的像小狗、有的像棉花糖。吃完东西我们在公园里散步看花。太阳慢慢地落下，爸爸说该回家了，虽然有点舍不得，但今天过得真是开心。"
   }
 ];
 
+let articles = [];
+
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+server.maxConnections = 150;
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
+server.requestTimeout = 30000;
+const io = new Server(server, {
+  pingTimeout: 10000,
+  pingInterval: 5000,
+  connectTimeout: 10000,
+  maxHttpBufferSize: 1e5,
+  perMessageDeflate: false,
+  transports: ["polling", "websocket"],
+  cors: {
+    origin: process.env.CORS_ORIGIN
+      ? process.env.CORS_ORIGIN.split(",").map((s) => s.trim())
+      : [/^https?:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+)(:\d+)?$/],
+    methods: ["GET", "POST", "DELETE"],
+    credentials: true
+  }
+});
 
 const players = new Map();
 const adminTokens = new Map();
 let studentRoster = new Map();
 let finalSnapshot = null;
+let finalizing = false;
+let stateDirty = false;
+let lastBroadcastTime = 0;
 
 const raceState = {
   status: "waiting",
   duration: DEFAULT_DURATION,
-  articleId: articles[0].id,
-  articleTitle: articles[0].title,
-  articleContent: articles[0].content,
+  articleId: "",
+  articleTitle: "",
+  articleContent: "",
   startedAt: null,
   pausedAt: null,
   endedAt: null,
@@ -71,9 +95,22 @@ const raceState = {
   endReason: ""
 };
 
-app.use(express.json());
+app.use(express.json({ limit: MAX_BODY_SIZE }));
 app.use("/vendor/xlsx", express.static(vendorXlsxDir));
 app.use(express.static(publicDir));
+
+app.get("/api/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    uptime: Math.floor(process.uptime()),
+    players: players.size,
+    onlinePlayers: Array.from(players.values()).filter((p) => p.online).length,
+    raceStatus: raceState.status,
+    articleTitle: raceState.articleTitle,
+    remainingSeconds: getRemainingSeconds(),
+    timestamp: Date.now()
+  });
+});
 
 app.get("/", (req, res) => {
   res.redirect("/player.html");
@@ -83,9 +120,11 @@ app.get("/api/config", (req, res) => {
   res.json({
     classes: classList,
     defaultDuration: DEFAULT_DURATION,
+    maxDuration: 1800,
+    minDuration: 60,
     heartbeatInterval: HEARTBEAT_INTERVAL,
     disconnectThreshold: DISCONNECT_THRESHOLD,
-    adminPasswordHint: "默认密码已内置，可在 server.js 中修改"
+    adminPasswordHint: "默认密码已内置，可通过 ADMIN_PASSWORD 环境变量修改"
   });
 });
 
@@ -94,7 +133,8 @@ app.get("/api/articles", (req, res) => {
     articles: articles.map((article) => ({
       id: article.id,
       title: article.title,
-      content: article.content
+      content: article.content,
+      charCount: article.content.length
     }))
   });
 });
@@ -106,6 +146,35 @@ app.get("/api/student-roster", (req, res) => {
     className,
     students
   });
+});
+
+app.post("/api/student-roster/temp", (req, res) => {
+  const className = String(req.body?.className || "").trim();
+  const playerName = String(req.body?.playerName || "").trim();
+
+  if (!className || !playerName) {
+    return res.status(400).json({ success: false, message: "班级和姓名不能为空" });
+  }
+
+  if (!classList.includes(className)) {
+    return res.status(400).json({ success: false, message: "请选择有效班级" });
+  }
+
+  const classStudents = getRosterNames(className);
+  if (classStudents.includes(playerName)) {
+    return res.json({ success: true, exists: true, message: "该姓名已在名单中" });
+  }
+
+  if (!studentRoster.has(className)) {
+    studentRoster.set(className, []);
+  }
+  const names = studentRoster.get(className);
+  if (!names.includes(playerName)) {
+    names.push(playerName);
+    names.sort((a, b) => a.localeCompare(b, "zh-CN"));
+  }
+
+  return res.json({ success: true, message: "临时添加成功" });
 });
 
 app.get("/api/student-roster/stats", (_req, res) => {
@@ -137,8 +206,20 @@ app.post("/api/student-roster", async (req, res) => {
     });
   }
 
-  setStudentRoster(students);
+  const seenKeys = new Set();
+  for (const s of students) {
+    const key = `${s.className}__${s.playerName}`;
+    if (seenKeys.has(key)) {
+      return res.status(400).json({
+        success: false,
+        message: `学生"${s.playerName}"在班级"${s.className}"中重复`
+      });
+    }
+    seenKeys.add(key);
+  }
+
   await persistStudentRoster();
+  setStudentRoster(students);
   return res.json({
     success: true,
     classCount: studentRoster.size,
@@ -154,11 +235,33 @@ app.delete("/api/student-roster", async (req, res) => {
   }
 
   studentRoster = new Map();
+  rebuildClassList();
   await persistStudentRoster();
-  return res.json({ success: true, message: "学生名单已清除" });
+
+  try {
+    await fs.unlink(resultFile);
+  } catch (_e) {}
+  try {
+    await fs.unlink(checkpointFile);
+  } catch (_e) {}
+
+  finalSnapshot = null;
+  players.clear();
+  raceState.status = "waiting";
+  setDefaultArticle();
+  raceState.startedAt = null;
+  raceState.pausedAt = null;
+  raceState.endedAt = null;
+  raceState.totalPausedMs = 0;
+  raceState.remainingMsAtPause = null;
+  raceState.endReason = "";
+
+  emitAllStates();
+
+  return res.json({ success: true, message: "学生名单及历史成绩已清除" });
 });
 
-app.post("/api/articles", (req, res) => {
+app.post("/api/articles", async (req, res) => {
   const token = String(req.body?.token || "");
   if (!isAdminTokenValid(token)) {
     return res.status(401).json({
@@ -177,10 +280,10 @@ app.post("/api/articles", (req, res) => {
     });
   }
 
-  if (content.length < 100) {
+  if (content.length < 100 || content.length > 10000) {
     return res.status(400).json({
       success: false,
-      message: "文章内容过短，请导入更完整的比赛文章"
+      message: "文章内容需在100~10000字之间"
     });
   }
 
@@ -190,15 +293,16 @@ app.post("/api/articles", (req, res) => {
     content
   };
 
+  await persistArticles();
   articles = [...articles, article];
   return res.json({
     success: true,
-    article,
+    article: { ...article, charCount: article.content.length },
     message: "比赛文章导入成功"
   });
 });
 
-app.delete("/api/articles/:id", (req, res) => {
+app.delete("/api/articles/:id", async (req, res) => {
   const token = String(req.query.token || "");
   if (!isAdminTokenValid(token)) {
     return res.status(401).json({ success: false, message: "管理员身份无效" });
@@ -210,19 +314,30 @@ app.delete("/api/articles/:id", (req, res) => {
     return res.status(404).json({ success: false, message: "文章不存在" });
   }
 
-  if (target.id === "article-1" || target.id === "article-2" || target.id === "article-3") {
+  const builtInIds = BUILT_IN_ARTICLES.map((a) => a.id);
+  if (builtInIds.includes(target.id)) {
     return res.status(400).json({ success: false, message: "内置文章不可删除" });
   }
 
   articles = articles.filter((a) => a.id !== articleId);
+  await persistArticles();
   return res.json({ success: true, message: "已删除文章" });
 });
 
 app.get("/api/state", (req, res) => {
+  const token = String(req.query.token || "");
+  if (!isAdminTokenValid(token)) {
+    res.status(401).json({ success: false, message: "未授权" });
+    return;
+  }
+  const playerRows = buildPlayerAdminRows().map((p) => {
+    const { ip, ...rest } = p;
+    return rest;
+  });
   res.json({
     race: buildPublicRaceState(),
     leaderboard: getCurrentSnapshot(),
-    players: buildPlayerAdminRows()
+    players: playerRows
   });
 });
 
@@ -259,10 +374,45 @@ app.get("/api/export", (req, res) => {
 });
 
 io.on("connection", (socket) => {
+  const safe = (handler) =>
+    (...args) => {
+      let responded = false;
+      const rawCb = args[args.length - 1];
+      if (typeof rawCb === "function") {
+        const original = rawCb;
+        args[args.length - 1] = (...cbArgs) => {
+          if (!responded) {
+            responded = true;
+            original(...cbArgs);
+          }
+        };
+      }
+      try {
+        return handler(...args);
+      } catch (err) {
+        console.error(`Socket 事件处理异常 [${socket.id}]:`, err.message);
+        const cb = args[args.length - 1];
+        if (!responded && typeof cb === "function") {
+          responded = true;
+          try { cb({ success: false, message: "服务器处理异常，请稍后重试" }); } catch (_e) {}
+        }
+      }
+    };
+
   socket.emit("raceStateSync", {
     race: buildPublicRaceState(),
     leaderboard: getCurrentSnapshot()
   });
+
+  {
+    const names = [];
+    for (const player of players.values()) {
+      if (player.online) {
+        names.push({ className: player.className, playerName: player.playerName });
+      }
+    }
+    socket.emit("activePlayersUpdate", names);
+  }
 
   socket.on("joinPlayer", (payload, callback = () => {}) => {
     try {
@@ -288,19 +438,59 @@ io.on("connection", (socket) => {
       const playerId = getPlayerId(className, playerName);
       const existingPlayer = players.get(playerId);
       const raceLocked = raceState.status === "running" || raceState.status === "paused";
+      const ip = getClientIp(socket);
+      let player = existingPlayer;
 
-      if (!existingPlayer && raceLocked) {
-        callback({ success: false, message: "比赛已开始，暂不允许新增选手" });
+      if (!player && raceLocked) {
+        player = createPlayerRecord({
+          className,
+          playerName,
+          ip,
+          socketId: socket.id
+        });
+        players.set(playerId, player);
+        socket.data.role = "player";
+        socket.data.playerId = playerId;
+        socket.join("players");
+
+        const remaining = getRemainingSeconds();
+        callback({
+          success: true,
+          player: buildPlayerSelfRow(player),
+          race: buildPublicRaceState(),
+          leaderboard: getCurrentSnapshot()
+        });
+
+        socket.emit("startRace", {
+          articleId: raceState.articleId,
+          articleTitle: raceState.articleTitle,
+          articleContent: raceState.articleContent,
+          duration: raceState.duration,
+          startedAt: raceState.startedAt,
+          remainingSeconds: remaining
+        });
+
+        emitAllStates();
+        return;
+      }
+
+      if (existingPlayer && existingPlayer.submitted && raceLocked) {
+        callback({ success: false, message: "你已提交本次比赛，不能重复进入" });
         return;
       }
 
       if (existingPlayer && existingPlayer.online && existingPlayer.socketId !== socket.id) {
-        callback({ success: false, message: "该选手已在其他设备登录" });
-        return;
+        const forceReconnect = Boolean(payload?.force);
+        if (!forceReconnect) {
+          callback({ success: false, message: "该选手已在其他设备登录，是否强制换绑？" });
+          return;
+        }
+        const oldSocket = io.sockets.sockets.get(existingPlayer.socketId);
+        if (oldSocket) {
+          oldSocket.emit("systemMessage", { message: "您的连接已被新设备替换" });
+          oldSocket.disconnect(true);
+        }
       }
-
-      const ip = getClientIp(socket);
-      let player = existingPlayer;
 
       if (!player) {
         player = createPlayerRecord({
@@ -369,23 +559,27 @@ io.on("connection", (socket) => {
       return;
     }
 
+    const wasOffline = !player.online;
     player.online = true;
     player.lastHeartbeat = Date.now();
+    if (wasOffline) {
+      markStateDirty();
+    }
   });
 
-  socket.on("updateProgress", (payload = {}) => {
+  socket.on("updateProgress", safe((payload = {}) => {
     const player = getSocketPlayer(socket);
     if (!player || raceState.status !== "running") {
       return;
     }
 
-    const articleLength = raceState.articleContent.length;
-    const totalKeystrokes = clampNumber(payload.totalKeystrokes, 0, 999999);
-    const errorKeystrokes = clampNumber(payload.errorKeystrokes, 0, totalKeystrokes);
-    const correctChars = clampNumber(payload.correctChars, 0, articleLength);
-    const backspaceCount = clampNumber(payload.backspaceCount, 0, 999999);
-    const warningCount = clampNumber(payload.warningCount, 0, 999);
-    const typedLength = clampNumber(payload.typedLength, 0, articleLength * 2);
+    const totalKeystrokes = clampNumber(payload?.totalKeystrokes, 0, 999999);
+    const errorKeystrokes = clampNumber(payload?.errorKeystrokes, 0, 999999);
+    const correctChars = clampNumber(payload?.correctChars, 0, 999999);
+    const backspaceCount = clampNumber(payload?.backspaceCount, 0, 999);
+    const warningCount = clampNumber(payload?.warningCount, 0, 999);
+    const typedLength = clampNumber(payload?.typedLength, 0, 999999);
+    const articleLength = raceState.articleContent.length || 1;
 
     player.online = true;
     player.lastHeartbeat = Date.now();
@@ -396,20 +590,75 @@ io.on("connection", (socket) => {
     player.stats.warningCount = warningCount;
     player.stats.typedLength = typedLength;
     player.stats.currentInput = String(payload.currentInput || "").slice(0, articleLength * 2);
+    player.stats.lineValues = Array.isArray(payload.lineValues) ? payload.lineValues.slice(0, 200) : [];
     player.stats.updatedAt = Date.now();
 
+    player.stats.speedHistory = player.stats.speedHistory || [];
+    player.stats.speedHistory.push({ correctChars, timestamp: Date.now() });
+    const historyCutoff = Date.now() - SPEED_HISTORY_WINDOW_MS;
+    player.stats.speedHistory = player.stats.speedHistory.filter((h) => h.timestamp >= historyCutoff);
+
+    markStateDirty();
+  }));
+
+  socket.on("playerSubmit", safe((payload, callback = () => {}) => {
+    const player = getSocketPlayer(socket);
+    if (!player) {
+      callback({ success: false, message: "未找到选手信息" });
+      return;
+    }
+
+    if (player.submitted) {
+      callback({ success: false, message: "你已经提交过比赛，请等待裁判公布结果" });
+      return;
+    }
+
+    if (raceState.status !== "running" && raceState.status !== "paused") {
+      callback({ success: false, message: "当前不在比赛状态" });
+      return;
+    }
+
+    const totalKeystrokes = clampNumber(payload?.totalKeystrokes, 0, 999999);
+    const errorKeystrokes = clampNumber(payload?.errorKeystrokes, 0, 999999);
+    const correctChars = clampNumber(payload?.correctChars, 0, 999999);
+    const typedLength = clampNumber(payload?.typedLength, 0, 999999);
+    const articleLength = raceState.articleContent.length || 1;
+
+    player.stats.totalKeystrokes = totalKeystrokes;
+    player.stats.errorKeystrokes = errorKeystrokes;
+    player.stats.correctChars = correctChars;
+    player.stats.typedLength = typedLength;
+    player.stats.currentInput = String(payload.currentInput || "").slice(0, articleLength * 2);
+    player.stats.lineValues = Array.isArray(payload.lineValues) ? payload.lineValues.slice(0, 200) : [];
+    player.stats.updatedAt = Date.now();
+    player.submitted = true;
+
+    const finalMetrics = calculateMetrics(player, getElapsedMs());
+    player.finalMetrics = finalMetrics;
+    const currentSnapshot = buildLeaderboardSnapshot();
+    const playerResult = currentSnapshot.players.find(
+      (p) => p.className === player.className && p.playerName === player.playerName
+    );
+    const classResult = currentSnapshot.classes.find((c) => c.className === player.className);
+
+    const playerSelf = buildPlayerSelfRow(player, finalMetrics, classResult);
+
+    socket.emit("playerSubmitted", {
+      success: true,
+      player: playerSelf,
+      playerResult,
+      classResult,
+      rank: playerResult?.rank || "-"
+    });
+
+    io.to("admins").emit("adminState", buildAdminState());
     emitAllStates();
-  });
 
-  socket.on("reportFocusWarning", () => {
-    return;
-  });
+    callback({ success: true, message: "提交成功" });
+  }));
 
-  socket.on("reportShortcutWarning", () => {
-    return;
-  });
 
-  socket.on("adminStartRace", (payload, callback = () => {}) => {
+  socket.on("adminStartRace", safe((payload, callback = () => {}) => {
     if (!isAdminSocket(socket)) {
       callback({ success: false, message: "无权开始比赛" });
       return;
@@ -420,7 +669,17 @@ io.on("connection", (socket) => {
       return;
     }
 
+    if (articles.length === 0) {
+      callback({ success: false, message: "暂无可用的比赛文章，请先导入文章" });
+      return;
+    }
+
     const article = articles.find((item) => item.id === payload?.articleId) || articles[0];
+    if (!article) {
+      callback({ success: false, message: "所选文章不存在" });
+      return;
+    }
+
     const duration = clampNumber(payload?.duration, 60, 1800);
     if (players.size === 0) {
       callback({ success: false, message: "请至少先让 1 名学生登录后再开始比赛" });
@@ -428,6 +687,7 @@ io.on("connection", (socket) => {
     }
 
     finalSnapshot = null;
+    finalizing = false;
     raceState.status = "running";
     raceState.duration = duration;
     raceState.articleId = article.id;
@@ -443,6 +703,8 @@ io.on("connection", (socket) => {
     for (const player of players.values()) {
       player.disqualified = false;
       player.disqualifyReason = "";
+      player.submitted = false;
+      player.finalMetrics = null;
       player.stats = createEmptyStats();
       player.lastHeartbeat = Date.now();
     }
@@ -457,9 +719,9 @@ io.on("connection", (socket) => {
 
     emitAllStates();
     callback({ success: true, message: "比赛已开始" });
-  });
+  }));
 
-  socket.on("adminPauseRace", (_payload, callback = () => {}) => {
+  socket.on("adminPauseRace", safe((_payload, callback = () => {}) => {
     if (!isAdminSocket(socket)) {
       callback({ success: false, message: "无权暂停比赛" });
       return;
@@ -482,9 +744,9 @@ io.on("connection", (socket) => {
 
     emitAllStates();
     callback({ success: true, message: "比赛已暂停" });
-  });
+  }));
 
-  socket.on("adminResumeRace", (_payload, callback = () => {}) => {
+  socket.on("adminResumeRace", safe((_payload, callback = () => {}) => {
     if (!isAdminSocket(socket)) {
       callback({ success: false, message: "无权继续比赛" });
       return;
@@ -507,9 +769,9 @@ io.on("connection", (socket) => {
 
     emitAllStates();
     callback({ success: true, message: "比赛已继续" });
-  });
+  }));
 
-  socket.on("adminEndRace", (_payload, callback = () => {}) => {
+  socket.on("adminEndRace", safe((_payload, callback = () => {}) => {
     if (!isAdminSocket(socket)) {
       callback({ success: false, message: "无权结束比赛" });
       return;
@@ -517,8 +779,11 @@ io.on("connection", (socket) => {
 
     finalizeRace("manual")
       .then(() => callback({ success: true, message: "比赛已结束" }))
-      .catch(() => callback({ success: false, message: "结束比赛失败" }));
-  });
+      .catch((err) => {
+        console.error("结束比赛失败：", err.message);
+        callback({ success: false, message: "结束比赛失败" });
+      });
+  }));
 
   socket.on("disconnect", () => {
     const player = getSocketPlayer(socket);
@@ -534,55 +799,246 @@ io.on("connection", (socket) => {
 
 const ticker = setInterval(async () => {
   cleanExpiredAdminTokens();
-  updateHeartbeatStatus();
+
+  if (raceState.status === "running" && tickerCheckpoint()) {
+    await saveCheckpoint();
+  }
 
   if (raceState.status === "running" && getRemainingSeconds() <= 0) {
     await finalizeRace("timeout");
     return;
   }
 
-  emitAllStates();
+  const now = Date.now();
+  if (stateDirty && now - lastBroadcastTime >= STATE_BROADCAST_MIN_INTERVAL) {
+    emitAllStates();
+  } else if (!stateDirty && now - lastBroadcastTime >= IDLE_BROADCAST_INTERVAL) {
+    emitAllStates();
+  }
 }, 1000);
 
 ticker.unref();
 
+const heartbeatTimer = setInterval(() => {
+  updateHeartbeatStatus();
+}, HEARTBEAT_CHECK_INTERVAL);
+heartbeatTimer.unref();
+
+let lastCheckpointTime = 0;
+
+function tickerCheckpoint() {
+  const now = Date.now();
+  if (now - lastCheckpointTime >= CHECKPOINT_INTERVAL) {
+    lastCheckpointTime = now;
+    return true;
+  }
+  return false;
+}
+
+async function saveCheckpoint() {
+  try {
+    const snapshot = buildLeaderboardSnapshot();
+    const playerData = [];
+    for (const [id, p] of players) {
+      playerData.push({
+        id: p.id,
+        className: p.className,
+        playerName: p.playerName,
+        ip: p.ip,
+        stats: p.stats,
+        submitted: !!p.submitted,
+        finalMetrics: p.finalMetrics || null
+      });
+    }
+    const data = {
+      savedAt: new Date().toISOString(),
+      race: buildPublicRaceState(),
+      totalPausedMs: raceState.totalPausedMs,
+      leaderboard: snapshot,
+      players: playerData
+    };
+    const tmp = checkpointFile + ".tmp";
+    await fs.writeFile(tmp, JSON.stringify(data, null, 2), "utf8");
+    await fs.rename(tmp, checkpointFile);
+  } catch (err) {
+    console.error("检查点保存失败：", err.message);
+  }
+}
+
+async function loadCheckpoint() {
+  try {
+    const raw = await fs.readFile(checkpointFile, "utf8");
+    const data = JSON.parse(raw);
+    if (!data || !data.race) {
+      return;
+    }
+
+    const race = data.race;
+    if (race.status !== "waiting" && race.status !== "ended") {
+      raceState.status = race.status;
+      raceState.duration = race.duration;
+      raceState.articleId = race.articleId;
+      raceState.articleTitle = race.articleTitle;
+      raceState.articleContent = race.articleContent;
+      raceState.startedAt = race.startedAt;
+      raceState.pausedAt = race.pausedAt;
+      raceState.totalPausedMs = data.totalPausedMs || 0;
+      raceState.remainingMsAtPause = null;
+      raceState.endedAt = null;
+      raceState.endReason = "";
+    }
+
+    if (Array.isArray(data.players)) {
+      for (const p of data.players) {
+        players.set(p.id, {
+          id: p.id,
+          className: p.className,
+          playerName: p.playerName,
+          ip: p.ip || "",
+          socketId: "",
+          online: false,
+          connectedAt: Date.now(),
+          lastHeartbeat: Date.now(),
+          disqualified: false,
+          disqualifyReason: "",
+          submitted: !!p.submitted,
+          stats: p.stats || {
+            totalKeystrokes: 0,
+            errorKeystrokes: 0,
+            correctChars: 0,
+            backspaceCount: 0,
+            warningCount: 0,
+            shortcutWarnings: 0,
+            typedLength: 0,
+            currentInput: "",
+            lineValues: [],
+            speedHistory: [],
+            smoothedRecentSpeed: null,
+            updatedAt: Date.now()
+          },
+          finalMetrics: p.finalMetrics || null
+        });
+      }
+    }
+
+    console.log(`检查点已恢复：${players.size} 名选手，比赛状态 ${raceState.status}`);
+  } catch (_err) {
+  }
+}
+
+function markStateDirty() {
+  stateDirty = true;
+}
+
 server.listen(PORT, async () => {
   await ensureStorage();
+  await loadArticles();
   await loadStudentRoster();
+  await loadCheckpoint();
+  rebuildClassList();
+  setDefaultArticle();
   console.log(`打字比赛系统已启动：http://localhost:${PORT}`);
   console.log(`局域网访问地址：http://本机IP:${PORT}`);
 });
 
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`端口 ${PORT} 已被占用，请关闭占用进程或设置环境变量 PORT 更换端口后重试。`);
+  } else {
+    console.error("服务器启动失败：", err.message);
+  }
+  process.exit(1);
+});
+
+let shuttingDown = false;
+
+async function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`收到 ${signal}，正在安全关闭服务...`);
+  if (raceState.status === "running" || raceState.status === "paused") {
+    await finalizeRace("server_shutdown");
+  }
+  io.close();
+  server.close(() => {
+    console.log("服务已安全关闭");
+    process.exit(0);
+  });
+  setTimeout(() => {
+    console.error("服务关闭超时，强制退出");
+    process.exit(1);
+  }, 10000);
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+process.on("uncaughtException", (err) => {
+  console.error("未捕获异常：", err.message);
+  gracefulShutdown("uncaughtException").finally(() => process.exit(1));
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("未处理的 Promise 拒绝：", reason);
+});
+
+app.use((_req, res) => {
+  res.status(404).json({ success: false, message: "接口不存在" });
+});
+
+app.use((err, _req, res, _next) => {
+  console.error("服务端错误：", err.message);
+  res.status(500).json({ success: false, message: "服务器内部错误" });
+});
+
 async function finalizeRace(reason) {
+  if (finalizing) {
+    return;
+  }
   if (raceState.status === "ended" || raceState.status === "waiting") {
     return;
   }
 
-  if (raceState.status === "paused" && raceState.pausedAt) {
-    raceState.endedAt = raceState.pausedAt;
-  } else {
-    raceState.endedAt = Date.now();
+  finalizing = true;
+  try {
+    if (raceState.status === "paused" && raceState.pausedAt) {
+      raceState.endedAt = raceState.pausedAt;
+    } else {
+      raceState.endedAt = Date.now();
+    }
+
+    raceState.status = "ended";
+    raceState.endReason = reason;
+
+    const elapsed = getElapsedMs();
+    for (const player of players.values()) {
+      if (!player.submitted) {
+        player.submitted = true;
+        player.finalMetrics = calculateMetrics(player, elapsed);
+      }
+    }
+
+    finalSnapshot = buildLeaderboardSnapshot();
+    await persistResults(finalSnapshot);
+
+    io.emit("raceEnd", {
+      reason,
+      race: buildPublicRaceState(),
+      leaderboard: finalSnapshot
+    });
+
+    emitAllStates();
+  } finally {
+    finalizing = false;
   }
-
-  raceState.status = "ended";
-  raceState.endReason = reason;
-
-  finalSnapshot = buildLeaderboardSnapshot();
-  await persistResults(finalSnapshot);
-
-  io.emit("raceEnd", {
-    reason,
-    race: buildPublicRaceState(),
-    leaderboard: finalSnapshot
-  });
-
-  emitAllStates();
 }
 
 function emitAllStates() {
+  stateDirty = false;
+  lastBroadcastTime = Date.now();
   const publicRace = buildPublicRaceState();
   const snapshot = getCurrentSnapshot();
-  const playerRows = buildPlayerAdminRows();
+  const playerRows = buildPlayerAdminRows(snapshot);
 
   io.emit("leaderboardUpdate", snapshot);
   io.to("admins").emit("adminState", {
@@ -595,12 +1051,24 @@ function emitAllStates() {
     leaderboard: snapshot
   });
 
+  const activeNames = [];
+  for (const player of players.values()) {
+    if (player.online) {
+      activeNames.push({ className: player.className, playerName: player.playerName });
+    }
+  }
+  io.emit("activePlayersUpdate", activeNames);
+
+  const playerSnapMap = new Map();
+  for (const item of snapshot.players) {
+    playerSnapMap.set(item.id, item);
+  }
   for (const player of players.values()) {
     if (!player.socketId) {
       continue;
     }
 
-    const selfResult = snapshot.players.find((item) => item.id === player.id) || null;
+    const selfResult = playerSnapMap.get(player.id) || null;
     const classResult = snapshot.classes.find((item) => item.className === player.className) || null;
 
     io.to(player.socketId).emit("playerStatus", {
@@ -628,6 +1096,7 @@ function buildLeaderboardSnapshot() {
       ip: player.ip,
       online: player.online,
       speed: metrics.speed,
+      recentSpeed: metrics.recentSpeed,
       accuracy: metrics.accuracy,
       score: metrics.score,
       totalKeystrokes: player.stats.totalKeystrokes,
@@ -638,7 +1107,8 @@ function buildLeaderboardSnapshot() {
       shortcutWarnings: player.stats.shortcutWarnings,
       typedLength: player.stats.typedLength,
       disqualified: metrics.disqualified,
-      disqualifyReason: metrics.disqualifyReason
+      disqualifyReason: metrics.disqualifyReason,
+      submitted: !!player.submitted
     };
   });
 
@@ -701,8 +1171,8 @@ function buildLeaderboardSnapshot() {
   };
 }
 
-function buildPlayerAdminRows() {
-  const snapshot = getCurrentSnapshot();
+function buildPlayerAdminRows(existingSnapshot) {
+  const snapshot = existingSnapshot || getCurrentSnapshot();
   return Array.from(players.values())
     .map((player) => {
       const metrics = snapshot.players.find((item) => item.id === player.id);
@@ -721,7 +1191,9 @@ function buildPlayerAdminRows() {
         warningCount: player.stats.warningCount,
         shortcutWarnings: player.stats.shortcutWarnings,
         speed: metrics?.speed || 0,
+        recentSpeed: metrics?.recentSpeed || 0,
         accuracy: metrics?.accuracy || 0,
+        submitted: !!player.submitted,
         score: metrics?.score || 0,
         rank: metrics?.rank || "-"
       };
@@ -745,6 +1217,7 @@ function buildPlayerSelfRow(player, metrics, classResult) {
     className: player.className,
     playerName: player.playerName,
     online: player.online,
+    submitted: !!player.submitted,
     warningCount: player.stats.warningCount,
     shortcutWarnings: player.stats.shortcutWarnings,
     totalKeystrokes: player.stats.totalKeystrokes,
@@ -752,6 +1225,7 @@ function buildPlayerSelfRow(player, metrics, classResult) {
     correctChars: player.stats.correctChars,
     backspaceCount: player.stats.backspaceCount,
     typedLength: player.stats.typedLength,
+    lineValues: player.stats.lineValues || [],
     speed: playerMetrics.speed,
     accuracy: playerMetrics.accuracy,
     score: playerMetrics.score,
@@ -779,28 +1253,54 @@ function buildPublicRaceState() {
 }
 
 function calculateMetrics(player, elapsedMs) {
+  if (player.submitted && player.finalMetrics) {
+    return player.finalMetrics;
+  }
+
   const safeElapsedMs = Math.max(elapsedMs, 1000);
   const minutes = safeElapsedMs / 60000;
   const speed = player.stats.correctChars > 0 ? player.stats.correctChars / minutes : 0;
   const accuracyDecimal =
-    player.stats.totalKeystrokes > 0
-      ? Math.max(
-          0,
-          (player.stats.totalKeystrokes - player.stats.errorKeystrokes) / player.stats.totalKeystrokes
-        )
-      : 1;
+    player.stats.typedLength > 0
+      ? player.stats.correctChars / player.stats.typedLength
+      : 0;
 
   const articleLength = raceState.articleContent.length || 1;
   const completionRatio = Math.min(player.stats.correctChars / articleLength, 1);
-  const completionScore = completionRatio * 60;
-  const speedScore = Math.min(speed / 12, 1) * 50;
-  const accuracyScore = accuracyDecimal * 40;
+  const completionScore = completionRatio * 80;
+  const speedScore = Math.min(speed / 12, 1) * 40;
+  const accuracyScore = accuracyDecimal * 30;
   const score = completionScore + speedScore + accuracyScore;
+
+  const history = player.stats.speedHistory || [];
+  const recentCutoff = Date.now() - RECENT_SPEED_WINDOW_MS;
+  const recentEntries = history.filter((h) => h.timestamp >= recentCutoff);
+  let rawRecentSpeed = speed;
+  if (recentEntries.length >= 2) {
+    const oldest = recentEntries[0];
+    const newest = recentEntries[recentEntries.length - 1];
+    const deltaChars = newest.correctChars - oldest.correctChars;
+    const deltaMs = newest.timestamp - oldest.timestamp;
+    if (deltaMs >= 1000 && deltaChars >= 0) {
+      rawRecentSpeed = (deltaChars / (deltaMs / 60000));
+    }
+  }
+  rawRecentSpeed = Math.max(rawRecentSpeed, 0);
+
+  const prevSmoothed = player.stats.smoothedRecentSpeed;
+  const alpha = 0.2;
+  const smoothedRecentSpeed =
+    prevSmoothed != null && prevSmoothed >= 0
+      ? alpha * rawRecentSpeed + (1 - alpha) * prevSmoothed
+      : rawRecentSpeed;
+  player.stats.smoothedRecentSpeed = smoothedRecentSpeed;
+
   const disqualified = false;
   const disqualifyReason = "";
 
   return {
     speed: roundNumber(speed),
+    recentSpeed: roundNumber(smoothedRecentSpeed),
     accuracy: roundNumber(accuracyDecimal * 100),
     score: roundNumber(Math.max(score, 0)),
     disqualified,
@@ -820,6 +1320,7 @@ function createPlayerRecord({ className, playerName, ip, socketId }) {
     lastHeartbeat: Date.now(),
     disqualified: false,
     disqualifyReason: "",
+    submitted: false,
     stats: createEmptyStats()
   };
 }
@@ -834,6 +1335,9 @@ function createEmptyStats() {
     shortcutWarnings: 0,
     typedLength: 0,
     currentInput: "",
+    lineValues: [],
+    speedHistory: [],
+    smoothedRecentSpeed: null,
     updatedAt: Date.now()
   };
 }
@@ -879,9 +1383,17 @@ function cleanExpiredAdminTokens() {
 
 function updateHeartbeatStatus() {
   const now = Date.now();
+  let changed = false;
   for (const player of players.values()) {
     const isOnline = player.socketId && now - player.lastHeartbeat <= DISCONNECT_THRESHOLD;
+    const wasOnline = player.online;
     player.online = Boolean(isOnline);
+    if (wasOnline !== player.online) {
+      changed = true;
+    }
+  }
+  if (changed) {
+    markStateDirty();
   }
 }
 
@@ -934,7 +1446,8 @@ function getPlayerId(className, playerName) {
 }
 
 function getClientIp(socket) {
-  const forwarded = socket.handshake.headers["x-forwarded-for"];
+  const trustedProxy = process.env.TRUST_PROXY === "true";
+  const forwarded = trustedProxy ? socket.handshake.headers["x-forwarded-for"] : null;
   const rawIp = (Array.isArray(forwarded) ? forwarded[0] : forwarded || socket.handshake.address || "").toString();
   return rawIp.replace(/^::ffff:/, "");
 }
@@ -962,7 +1475,13 @@ async function persistResults(snapshot) {
     race: buildPublicRaceState(),
     leaderboard: snapshot
   };
-  await fs.writeFile(resultFile, JSON.stringify(data, null, 2), "utf8");
+  try {
+    const tmp = resultFile + ".tmp";
+    await fs.writeFile(tmp, JSON.stringify(data, null, 2), "utf8");
+    await fs.rename(tmp, resultFile);
+  } catch (err) {
+    console.error("成绩落盘失败：", err.message);
+  }
 }
 
 function buildCsv(snapshot) {
@@ -983,14 +1502,18 @@ function buildCsv(snapshot) {
 
   lines.push("");
   lines.push("个人成绩排行榜");
-  lines.push("姓名,班级,排名,速度(字/分钟),准确率(%),得分,已输入字数,正确字数");
+  lines.push("姓名,班级,排名,速度(字/分钟),完成进度(%),准确率(%),得分,已输入字数,正确字数");
   snapshot.players.forEach((item) => {
+    const csvProgress = raceState.articleContent.length > 0
+      ? roundNumber((item.correctChars / raceState.articleContent.length) * 100)
+      : 0;
     lines.push(
       [
         escapeCsv(item.playerName),
         escapeCsv(item.className),
         item.rank,
         item.speed,
+        csvProgress,
         item.accuracy,
         item.score,
         item.typedLength,
@@ -1016,7 +1539,7 @@ function normalizeStudentRows(rows) {
       className: String(item?.className || "").trim(),
       playerName: String(item?.playerName || "").trim()
     }))
-    .filter((item) => classList.includes(item.className) && item.playerName);
+    .filter((item) => item.className && item.playerName);
 }
 
 function setStudentRoster(students) {
@@ -1034,6 +1557,27 @@ function setStudentRoster(students) {
       Array.from(names).sort((a, b) => a.localeCompare(b, "zh-CN"))
     ])
   );
+
+  rebuildClassList();
+}
+
+function rebuildClassList() {
+  const rosterClasses = Array.from(studentRoster.keys()).filter(Boolean).sort((a, b) => a.localeCompare(b, "zh-CN"));
+  if (rosterClasses.length > 0) {
+    classList = rosterClasses;
+  } else {
+    classList = Array.from({ length: 6 }, (_, gradeIndex) =>
+      Array.from({ length: 6 }, (_, classIndex) => `${gradeIndex + 1}年级${classIndex + 1}班`)
+    ).flat();
+  }
+}
+
+function setDefaultArticle() {
+  if (articles.length > 0) {
+    raceState.articleId = articles[0].id;
+    raceState.articleTitle = articles[0].title;
+    raceState.articleContent = articles[0].content;
+  }
 }
 
 function getRosterNames(className) {
@@ -1055,8 +1599,9 @@ async function persistStudentRoster() {
   const students = Array.from(studentRoster.entries()).flatMap(([className, names]) =>
     names.map((playerName) => ({ className, playerName }))
   );
+  const tmp = studentRosterFile + ".tmp";
   await fs.writeFile(
-    studentRosterFile,
+    tmp,
     JSON.stringify(
       {
         savedAt: new Date().toISOString(),
@@ -1067,4 +1612,38 @@ async function persistStudentRoster() {
     ),
     "utf8"
   );
+  await fs.rename(tmp, studentRosterFile);
+}
+
+async function loadArticles() {
+  try {
+    const raw = await fs.readFile(articlesFile, "utf8");
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.customArticles)) {
+      articles = [...BUILT_IN_ARTICLES, ...parsed.customArticles];
+    } else {
+      articles = [...BUILT_IN_ARTICLES];
+    }
+  } catch (_error) {
+    articles = [...BUILT_IN_ARTICLES];
+  }
+}
+
+async function persistArticles() {
+  await ensureStorage();
+  const customArticles = articles.filter((a) => !BUILT_IN_ARTICLES.some((b) => b.id === a.id));
+  const tmp = articlesFile + ".tmp";
+  await fs.writeFile(
+    tmp,
+    JSON.stringify(
+      {
+        savedAt: new Date().toISOString(),
+        customArticles
+      },
+      null,
+      2
+    ),
+    "utf8"
+  );
+  await fs.rename(tmp, articlesFile);
 }

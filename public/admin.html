@@ -17,7 +17,7 @@
             <h1><span class="emoji">🎯</span> 裁判管理端</h1>
             <p>南湾沙塘布学校科技节班级打字比赛</p>
           </div>
-          <span id="adminSocketBadge" class="badge"><span class="status-dot offline"></span> 连接中</span>
+          <span id="adminSocketBadge" class="badge"><span class="status-dot status-yellow"></span> 连接中</span>
         </div>
 
         <form id="adminLoginForm" class="field-group" autocomplete="off">
@@ -46,7 +46,7 @@
         </div>
         <div class="action-row header-actions">
           <a class="button secondary" href="/screen.html" target="_blank" rel="noreferrer">📺 打开排行榜大屏</a>
-          <button id="exportButton" class="secondary" type="button">📥 导出 CSV</button>
+          <button id="exportButton" class="secondary" type="button">📥 导出成绩</button>
         </div>
       </header>
 
@@ -122,7 +122,7 @@
 
         <div class="dashboard-panels">
           <section class="panel equal-height-panel">
-            <h3>🏆 班级总分柱状图</h3>
+            <h3>📊 个人实时进度榜 Top10</h3>
             <div id="classChart" class="bar-chart"></div>
           </section>
 
@@ -142,12 +142,13 @@
                 <th>班级</th>
                 <th>姓名</th>
                 <th>在线</th>
-                <th>心跳时间</th>
+                <th>心跳</th>
                 <th>进度</th>
                 <th>速度</th>
                 <th>准确率</th>
                 <th>得分</th>
-                <th>名次</th>
+                <th>状态</th>
+                <th>排名</th>
               </tr>
             </thead>
             <tbody id="playerTableBody"></tbody>

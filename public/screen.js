@@ -1,5 +1,11 @@
 (function () {
-  const socket = io();
+  const socket = io({
+  reconnectionAttempts: 20,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 10000,
+  randomizationFactor: 0.5,
+  timeout: 15000
+});
   const state = {
     race: {
       status: "waiting",
@@ -75,7 +81,9 @@
   }
 
   function renderTopPlayers() {
-    const players = [...(state.leaderboard.players || [])].sort((a, b) => b.speed - a.speed).slice(0, 10);
+    const players = [...(state.leaderboard.players || [])]
+      .sort((a, b) => (b.recentSpeed || b.speed || 0) - (a.recentSpeed || a.speed || 0))
+      .slice(0, 10);
     if (players.length === 0) {
       refs.screenTopPlayers.innerHTML = '<div class="empty-text">暂无个人榜单数据</div>';
       return;
@@ -86,14 +94,16 @@
         const lastRank = state.lastRanks.get(item.id);
         const flash = lastRank && lastRank !== index + 1 ? "flash" : "";
         state.lastRanks.set(item.id, index + 1);
+        const displaySpeed = (item.recentSpeed || item.speed || 0).toFixed(2);
+        const avgSpeed = (item.speed || 0).toFixed(2);
         return `
           <article class="rank-item ${flash}">
             <div class="rank-num">${index + 1}</div>
             <div>
               <strong>${item.playerName}</strong>
-              <div class="muted">${item.className} ｜ 准确率 ${item.accuracy.toFixed(2)}%</div>
+              <div class="muted">${item.className} ｜ 均速 ${avgSpeed} 字/分 ｜ 准确率 ${item.accuracy.toFixed(2)}%</div>
             </div>
-            <div>${item.speed.toFixed(2)} 字/分</div>
+            <div class="speed-badge">${displaySpeed} <span class="muted">字/分</span></div>
           </article>
         `;
       })

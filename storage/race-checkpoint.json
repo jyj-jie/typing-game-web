@@ -1,0 +1,81 @@
+{
+  "savedAt": "2026-05-27T07:36:57.231Z",
+  "race": {
+    "status": "running",
+    "duration": 1800,
+    "articleId": "article-2",
+    "articleTitle": "我爱大自然",
+    "articleContent": "春天到了，小草钻出地面，花儿开了，五颜六色真好看。小鸟在枝头唱歌，蝴蝶在花丛中飞来飞去。夏天很热，大树长满绿叶，像一把把大伞。池塘里荷花开了一大片，粉色的花瓣好看极了。秋天来了，天气变凉，树叶变黄变红，一片片落下来。田野里稻谷金黄，果园里果实累累的。冬天北风呼呼吹，有时还会下雪，大地盖上了白被子。小朋友们堆雪人、打雪仗，开心极了。一年四季，大自然送给我们不同的礼物。我们要爱护环境，让地球一直美丽。",
+    "startedAt": 1779867416395,
+    "pausedAt": null,
+    "endedAt": null,
+    "remainingSeconds": 1800,
+    "endReason": ""
+  },
+  "totalPausedMs": 0,
+  "leaderboard": {
+    "status": "running",
+    "articleId": "article-2",
+    "articleTitle": "我爱大自然",
+    "duration": 1800,
+    "remainingSeconds": 1800,
+    "updatedAt": 1779867417231,
+    "classes": [
+      {
+        "className": "三(1)班",
+        "totalScore": 0,
+        "playerCount": 1,
+        "validPlayerCount": 1,
+        "rank": 1
+      }
+    ],
+    "players": [
+      {
+        "id": "三(1)班__蔡依言",
+        "className": "三(1)班",
+        "playerName": "蔡依言",
+        "ip": "10.23.0.78",
+        "online": true,
+        "speed": 0,
+        "recentSpeed": 0,
+        "accuracy": 0,
+        "score": 0,
+        "totalKeystrokes": 0,
+        "errorKeystrokes": 0,
+        "correctChars": 0,
+        "backspaceCount": 0,
+        "warningCount": 0,
+        "shortcutWarnings": 0,
+        "typedLength": 0,
+        "disqualified": false,
+        "disqualifyReason": "",
+        "submitted": false,
+        "rank": 1
+      }
+    ]
+  },
+  "players": [
+    {
+      "id": "三(1)班__蔡依言",
+      "className": "三(1)班",
+      "playerName": "蔡依言",
+      "ip": "10.23.0.78",
+      "stats": {
+        "totalKeystrokes": 0,
+        "errorKeystrokes": 0,
+        "correctChars": 0,
+        "backspaceCount": 0,
+        "warningCount": 0,
+        "shortcutWarnings": 0,
+        "typedLength": 0,
+        "currentInput": "",
+        "lineValues": [],
+        "speedHistory": [],
+        "smoothedRecentSpeed": 0,
+        "updatedAt": 1779867416395
+      },
+      "submitted": false,
+      "finalMetrics": null
+    }
+  ]
+}

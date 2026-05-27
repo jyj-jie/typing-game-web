@@ -1,5 +1,11 @@
 (function () {
-  const socket = io();
+  const socket = io({
+  reconnectionAttempts: 20,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 10000,
+  randomizationFactor: 0.5,
+  timeout: 15000
+});
   const tokenKey = "typing-admin-token";
   const state = {
     token: sessionStorage.getItem(tokenKey) || "",
@@ -87,7 +93,7 @@
     state.config = await configResponse.json();
     state.articles = (await articleResponse.json()).articles || [];
 
-    refs.durationInput.value = 5;
+    refs.durationInput.value = 30;
     renderArticleOptions();
   }
 
@@ -242,7 +248,7 @@
 
     refs.rosterImportFile.value = "";
     await loadRosterStats();
-    showToast("已清除", "学生名单已全部删除。", "success");
+    showToast("已清除", "学生名单及历史成绩数据已全部删除。", "success");
   }
 
   function pauseRace() {
@@ -277,7 +283,10 @@
 
   function renderArticleOptions(selectedId) {
     refs.articleSelect.innerHTML = state.articles
-      .map((item) => `<option value="${item.id}">${item.title}</option>`)
+      .map((item) => {
+        const count = item.charCount || (item.content ? item.content.length : 0);
+        return `<option value="${item.id}">${item.title}（${count}字）</option>`;
+      })
       .join("");
 
     if (selectedId) {
@@ -292,7 +301,7 @@
     refs.onlineCount.textContent = String(state.players.filter((item) => item.online).length);
     refs.classCount.textContent = String(state.leaderboard.classes.length);
 
-    renderClassChart();
+    renderProgressTop10();
     renderTopPlayers();
     renderPlayerTable();
     renderButtons();
@@ -342,29 +351,37 @@
     refs.exportButton.disabled = state.leaderboard.players.length === 0;
   }
 
-  function renderClassChart() {
-    if (state.leaderboard.classes.length === 0) {
-      refs.classChart.innerHTML = '<div class="empty-text">暂无班级成绩数据</div>';
+  function renderProgressTop10() {
+    const progressPlayers = [...state.leaderboard.players]
+      .sort((a, b) => (b.correctChars || 0) - (a.correctChars || 0))
+      .slice(0, 10);
+
+    if (progressPlayers.length === 0) {
+      refs.classChart.innerHTML = '<div class="empty-text">暂无选手进度数据</div>';
       return;
     }
 
-    const maxScore = Math.max(...state.leaderboard.classes.map((item) => item.totalScore), 1);
-    refs.classChart.innerHTML = state.leaderboard.classes
+    const articleLength = state.race.articleContent ? state.race.articleContent.length : 1;
+
+    refs.classChart.innerHTML = progressPlayers
       .map(
-        (item) => `
+        (item) => {
+          const progress = ((item.correctChars || 0) / articleLength) * 100;
+          return `
           <div class="bar-row">
-            <strong>${item.className}</strong>
-            <div class="bar-track"><div class="bar-fill" style="width:${(item.totalScore / maxScore) * 100}%"></div></div>
-            <span>${item.totalScore.toFixed(2)}</span>
+            <strong>${item.playerName}<small>（${item.className}）</small></strong>
+            <div class="bar-track"><div class="bar-fill" style="width:${Math.min(progress, 100)}%"></div></div>
+            <span>${progress.toFixed(1)}%</span>
           </div>
-        `
+        `;
+        }
       )
       .join("");
   }
 
   function renderTopPlayers() {
     const topPlayers = [...state.leaderboard.players]
-      .sort((a, b) => b.speed - a.speed)
+      .sort((a, b) => (b.recentSpeed || b.speed || 0) - (a.recentSpeed || a.speed || 0))
       .slice(0, 10);
 
     if (topPlayers.length === 0) {
@@ -377,14 +394,16 @@
         const lastRank = state.lastPlayerRanks.get(item.id);
         const flash = lastRank && lastRank !== index + 1 ? "flash" : "";
         state.lastPlayerRanks.set(item.id, index + 1);
+        const displaySpeed = (item.recentSpeed || item.speed || 0).toFixed(2);
+        const avgSpeed = (item.speed || 0).toFixed(2);
         return `
           <article class="rank-item ${flash}">
             <div class="rank-num">${index + 1}</div>
             <div>
               <strong>${item.playerName}</strong>
-              <div class="muted">${item.className} ｜ 得分 ${item.score.toFixed(2)} ｜ 准确率 ${item.accuracy.toFixed(2)}%</div>
+              <div class="muted">${item.className} ｜ 得分 ${item.score.toFixed(2)} ｜ 均速 ${avgSpeed} 字/分 ｜ 准确率 ${item.accuracy.toFixed(2)}%</div>
             </div>
-            <div class="speed-badge">${item.speed.toFixed(2)} <span class="muted">字/分</span></div>
+            <div class="speed-badge">${displaySpeed} <span class="muted">字/分</span></div>
           </article>
         `;
       })
@@ -393,7 +412,7 @@
 
   function renderPlayerTable() {
     if (state.players.length === 0) {
-      refs.playerTableBody.innerHTML = '<tr><td colspan="9" class="empty-text">暂无选手登录</td></tr>';
+      refs.playerTableBody.innerHTML = '<tr><td colspan="10" class="empty-text">暂无选手登录</td></tr>';
       return;
     }
 
@@ -418,6 +437,7 @@
             <td>${item.speed.toFixed(2)}</td>
             <td>${item.accuracy.toFixed(2)}%</td>
             <td>${(item.score || 0).toFixed(2)}</td>
+            <td>${item.submitted ? '<span class="success-text">已提交</span>' : (item.online ? '进行中' : '—')}</td>
             <td>${item.rank}</td>
           </tr>
         `
@@ -426,9 +446,9 @@
   }
 
   function updateSocketBadge(connected) {
-    refs.adminSocketBadge.innerHTML = connected
-      ? '<span class="status-dot"></span> 已连接'
-      : '<span class="status-dot offline"></span> 已断开';
+    const dotClass = connected ? "status-dot" : "status-dot status-red";
+    const text = connected ? "已连接" : "未连接";
+    refs.adminSocketBadge.innerHTML = `<span class="${dotClass}"></span> ${text}`;
   }
 
   function showToast(title, message, type) {
@@ -492,7 +512,12 @@
     const normalizedRows = normalizeRosterRows(rows);
 
     if (normalizedRows.length === 0) {
-      showToast("导入失败", "未识别到有效的班级和学生姓名数据。", "error");
+      const detectedCols = rows.length > 0 ? Object.keys(rows[0]).join("、") : "无";
+      showToast(
+        "导入失败",
+        `未识别到有效的班级和学生姓名数据。\n检测到表头列：${detectedCols}\n请确保 Excel 第一行包含"班级"和"学生姓名"列。`,
+        "error"
+      );
       return;
     }
 
@@ -519,12 +544,23 @@
   }
 
   function normalizeRosterRows(rows) {
+    const classKeys = ["班级", "班别", "班级名称", "组别", "分组", "年级班级", "参赛班级", "class"];
+    const nameKeys = ["学生姓名", "姓名", "学生", "名字", "参赛者", "选手", "玩家", "名称", "name"];
+
+    function findValue(row, keys) {
+      for (const key of keys) {
+        const match = Object.keys(row).find((k) => k.trim().toLowerCase() === key.toLowerCase());
+        if (match && row[match]) {
+          return String(row[match]).trim();
+        }
+      }
+      return "";
+    }
+
     return rows
       .map((row) => {
-        const className = String(row["班级"] ?? row["班别"] ?? row["班级名称"] ?? "").trim();
-        const playerName = String(
-          row["学生姓名"] ?? row["姓名"] ?? row["学生"] ?? row["名字"] ?? ""
-        ).trim();
+        const className = findValue(row, classKeys);
+        const playerName = findValue(row, nameKeys);
         if (!className || !playerName) {
           return null;
         }

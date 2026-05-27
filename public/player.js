@@ -1,6 +1,13 @@
 (function () {
-  const socket = io();
+  const socket = io({
+  reconnectionAttempts: 20,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 10000,
+  randomizationFactor: 0.5,
+  timeout: 15000
+});
   const storageKey = "typing-player-profile";
+  const raceStateKey = "typing-race-save";
   const state = {
     config: null,
     player: null,
@@ -32,7 +39,11 @@
     lineMaxLength: 42,
     isComposing: false,
     composingLineIndex: -1,
-    lastRenderedPage: -1
+    lastRenderedPage: -1,
+    racingSinceRestore: false,
+    joinedToServer: false,
+    submitting: false,
+    leaderboardSnapshot: null
   };
 
   const refs = {
@@ -44,6 +55,8 @@
     className: document.getElementById("className"),
     selectedName: document.getElementById("selectedName"),
     studentNameList: document.getElementById("studentNameList"),
+    tempNameInput: document.getElementById("tempNameInput"),
+    tempAddButton: document.getElementById("tempAddButton"),
     loginButton: document.getElementById("loginButton"),
     loginError: document.getElementById("loginError"),
     socketBadge: document.getElementById("socketBadge"),
@@ -59,10 +72,11 @@
     warningText: document.getElementById("warningText"),
     articleTitle: document.getElementById("articleTitle"),
     articleDisplay: document.getElementById("articleDisplay"),
-    raceStatusText: document.getElementById("raceStatusText"),
+    raceStatusBadge: document.getElementById("raceStatusBadge"),
     resultSummary: document.getElementById("resultSummary"),
     resultGrid: document.getElementById("resultGrid"),
     backToWait: document.getElementById("backToWait"),
+    submitButton: document.getElementById("submitButton"),
     toastStack: document.getElementById("toastStack")
   };
 
@@ -72,6 +86,7 @@
     bindEvents();
     await loadConfig();
     await restoreProfile();
+    restoreRaceSave();
     connectSocket();
     startHeartbeat();
   }
@@ -85,15 +100,26 @@
       showView("wait");
     });
     refs.articleDisplay.addEventListener("click", focusCapture);
+    refs.articleDisplay.addEventListener("copy", (e) => e.preventDefault());
+    refs.articleDisplay.addEventListener("cut", (e) => e.preventDefault());
+    refs.submitButton.addEventListener("click", handleSubmit);
+    refs.tempAddButton.addEventListener("click", handleTempAdd);
   }
 
   async function loadConfig() {
-    const response = await fetch("/api/config");
-    state.config = await response.json();
-    refs.className.innerHTML = state.config.classes
-      .map((classItem) => `<option value="${classItem}">${classItem}</option>`)
-      .join("");
-    await loadStudentNames(refs.className.value);
+    try {
+      const response = await fetch("/api/config");
+      if (!response.ok) {
+        throw new Error("服务器返回错误");
+      }
+      state.config = await response.json();
+      refs.className.innerHTML = state.config.classes
+        .map((classItem) => `<option value="${classItem}">${classItem}</option>`)
+        .join("");
+      await loadStudentNames(refs.className.value);
+    } catch (error) {
+      showToast("连接失败", "无法加载服务器配置，请刷新页面重试。", "error");
+    }
   }
 
   async function restoreProfile() {
@@ -117,13 +143,20 @@
 
   function connectSocket() {
     socket.on("connect", () => {
-      updateSocketBadge(true);
-      tryAutoJoin();
+      updateSocketBadge("connected");
+      if (!state.joinedToServer) {
+        tryAutoJoin();
+      }
     });
 
     socket.on("disconnect", () => {
-      updateSocketBadge(false);
+      updateSocketBadge("disconnected");
+      state.joinedToServer = false;
       showToast("连接已断开", "系统正在尝试重连服务器。", "error");
+    });
+
+    socket.on("reconnect_attempt", () => {
+      updateSocketBadge("connecting");
     });
 
     socket.on("raceStateSync", ({ race, leaderboard }) => {
@@ -138,12 +171,16 @@
       state.race = {
         status: "running",
         duration: payload.duration,
-        remainingSeconds: payload.duration,
+        remainingSeconds: payload.remainingSeconds != null ? payload.remainingSeconds : payload.duration,
         articleTitle: payload.articleTitle,
         articleContent: payload.articleContent,
         startedAt: payload.startedAt
       };
-      resetRaceInputState();
+      const hasExistingInput = state.lineValues.some(v => v.length > 0);
+      if (!hasExistingInput) {
+        localStorage.removeItem(raceStateKey);
+        resetRaceInputState();
+      }
       showView("race");
       renderRace(true);
       focusCapture();
@@ -168,6 +205,9 @@
     socket.on("raceEnd", ({ leaderboard }) => {
       state.race.status = "ended";
       state.race.remainingSeconds = 0;
+      clearInterval(state.reportTimer);
+      clearInterval(state.countdownTimer);
+      localStorage.removeItem(raceStateKey);
       if (!state.stayInWaitView) {
         showResultByLeaderboard(leaderboard);
       }
@@ -179,7 +219,24 @@
       renderRace();
     });
 
-    socket.on("systemMessage", () => {});
+    socket.on("systemMessage", ({ message }) => {
+      if (message) {
+        showToast("系统提示", message, "warning");
+      }
+    });
+
+    socket.on("activePlayersUpdate", (activeNames) => {
+      state.activeOnlinePlayers = activeNames || [];
+      if (state.currentView === "login") {
+        renderStudentNameButtons();
+      }
+    });
+
+    socket.on("leaderboardUpdate", (snapshot) => {
+      if (snapshot) {
+        state.leaderboardSnapshot = snapshot;
+      }
+    });
 
     socket.on("playerStatus", ({ race, player }) => {
       if (race) {
@@ -192,19 +249,137 @@
         };
         state.stats.warningCount = player.warningCount;
         state.stats.shortcutWarnings = player.shortcutWarnings;
+        if (!state.racingSinceRestore) {
+          state.stats.totalKeystrokes = player.totalKeystrokes;
+          state.stats.errorKeystrokes = player.errorKeystrokes;
+          state.stats.correctChars = player.correctChars;
+          state.stats.typedLength = player.typedLength;
+        }
+        if (player.submitted) {
+          state.race.status = "submitted";
+        }
         if (state.race.status === "ended" && !state.stayInWaitView) {
           showView("result");
         }
       }
       syncViews();
     });
+
+    socket.on("playerSubmitted", ({ playerResult, classResult, rank }) => {
+      state.race.status = "submitted";
+      refs.resultSummary.textContent = `${state.player.className} / ${state.player.playerName} — 已提交比赛成绩`;
+      refs.resultGrid.innerHTML = "";
+      [
+        ["🏅 个人排名", `<span class="rank-highlight">第 ${rank} 名</span>`],
+        ["速度", `${formatNumber(playerResult?.speed || 0)} 字/分钟`],
+        ["实时速度", `${formatNumber(playerResult?.recentSpeed || 0)} 字/分钟`],
+        ["准确率", `${formatNumber(playerResult?.accuracy || 0)}%`],
+        ["得分", formatNumber(playerResult?.score || 0)],
+        ["已输入字数", String(playerResult?.typedLength || 0)],
+        ["正确字数", String(playerResult?.correctChars || 0)]
+      ].forEach(([label, value]) => {
+        const card = document.createElement("div");
+        card.className = "mini-card";
+        card.innerHTML = `<span class="muted">${label}</span><strong>${value}</strong>`;
+        refs.resultGrid.appendChild(card);
+      });
+      showView("result");
+      showToast("提交成功", "成绩已锁定，请等待裁判宣布最终结果。", "success");
+    });
   }
 
-  function tryAutoJoin() {
-    const raw = sessionStorage.getItem(storageKey);
-    if (!raw || state.player) {
+  function restoreRaceSave() {
+    try {
+      const raw = localStorage.getItem(raceStateKey);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (saved.raceStatus === "running" || saved.raceStatus === "paused") {
+        state.race.status = saved.raceStatus;
+        state.race.duration = saved.duration || 300;
+        state.race.articleTitle = saved.articleTitle || "";
+        state.race.articleContent = saved.articleContent || "";
+        state.layoutSource = saved.articleContent || "";
+        const lines = splitTextIntoLines(saved.articleContent || "", state.lineMaxLength);
+        state.articleLines = lines;
+        let cumLen = 0;
+        state.lineMeta = lines.map((line) => {
+          const meta = { text: line, startIndex: cumLen, endIndex: cumLen + line.length };
+          cumLen += line.length;
+          return meta;
+        });
+        state.lineValues = saved.lineValues || lines.map(() => "");
+        state.stats = saved.stats || createEmptyStats();
+        state.currentLineIndex = saved.currentLineIndex || 0;
+        state.currentPage = saved.currentPage || 0;
+        state.lastRenderedPage = -1;
+        if (saved.remainingSeconds != null) {
+          state.race.remainingSeconds = saved.remainingSeconds;
+        }
+      }
+    } catch (_e) {
+      localStorage.removeItem(raceStateKey);
+    }
+  }
+
+  function saveRaceState() {
+    if (!state.player) return;
+    if (state.race.status !== "running" && state.race.status !== "paused") return;
+    try {
+      const data = {
+        raceStatus: state.race.status,
+        duration: state.race.duration,
+        remainingSeconds: state.race.remainingSeconds,
+        articleTitle: state.race.articleTitle,
+        articleContent: state.race.articleContent,
+        lineValues: state.lineValues,
+        stats: state.stats,
+        currentLineIndex: state.currentLineIndex,
+        currentPage: state.currentPage,
+        savedAt: Date.now()
+      };
+      localStorage.setItem(raceStateKey, JSON.stringify(data));
+    } catch (_e) {}
+  }
+
+  async function handleTempAdd() {
+    const name = refs.tempNameInput.value.trim();
+    if (!name) {
+      showToast("提示", "请输入姓名后再添加。", "error");
       return;
     }
+    const className = refs.className.value;
+    if (!className) {
+      showToast("提示", "请先选择班级。", "error");
+      return;
+    }
+    try {
+      const response = await fetch("/api/student-roster/temp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ className, playerName: name })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        showToast("添加失败", result.message || "操作失败", "error");
+        return;
+      }
+      refs.tempNameInput.value = "";
+      await loadStudentNames(className);
+      state.selectedPlayerName = name;
+      joinPlayer(className, name);
+    } catch (_e) {
+      showToast("网络错误", "临时添加请求失败，请重试。", "error");
+    }
+  }
+
+  let autoJoinLock = false;
+  function tryAutoJoin() {
+    if (autoJoinLock) return;
+    const raw = sessionStorage.getItem(storageKey);
+    if (!raw) {
+      return;
+    }
+    autoJoinLock = true;
 
     try {
       const profile = JSON.parse(raw);
@@ -212,8 +387,10 @@
         return;
       }
       joinPlayer(profile.className, profile.playerName);
+      setTimeout(() => { autoJoinLock = false; }, 3000);
     } catch (error) {
       sessionStorage.removeItem(storageKey);
+      autoJoinLock = false;
     }
   }
 
@@ -223,14 +400,25 @@
     joinPlayer(refs.className.value, state.selectedPlayerName);
   }
 
-  function joinPlayer(className, playerName) {
+  function joinPlayer(className, playerName, forceReconnect = false) {
     if (!className || !playerName) {
       refs.loginError.textContent = "请选择班级并点击自己的姓名";
       return;
     }
 
-    socket.emit("joinPlayer", { className, playerName }, (result) => {
+    const payload = { className, playerName };
+    if (forceReconnect) {
+      payload.force = true;
+    }
+
+    socket.emit("joinPlayer", payload, (result) => {
       if (!result?.success) {
+        if (!forceReconnect && result?.message && result.message.includes("强制换绑")) {
+          if (confirm(`⚠️ ${result.message}\n\n点击"确定"将强制挤掉旧连接并在此设备重新登录。`)) {
+            joinPlayer(className, playerName, true);
+            return;
+          }
+        }
         refs.loginError.textContent = result?.message || "登录失败";
         return;
       }
@@ -241,14 +429,68 @@
       };
       state.selectedPlayerName = playerName;
       state.stayInWaitView = false;
-      sessionStorage.setItem(storageKey, JSON.stringify(state.player));
+      state.joinedToServer = true;
+      try { sessionStorage.setItem(storageKey, JSON.stringify(state.player)); } catch (_e) {}
       state.race = result.race || state.race;
+
+      const hadRaceData = state.articleLines.length > 0;
+      const isRejoin = !hadRaceData && (result.race?.status === "running" || result.race?.status === "paused");
+      const serverPlayer = result.player;
+      if (isRejoin && serverPlayer && Array.isArray(serverPlayer.lineValues) && serverPlayer.lineValues.length > 0) {
+        state.racingSinceRestore = true;
+        state.layoutSource = result.race.articleContent || "";
+        const article = result.race.articleContent || "";
+        const lines = splitTextIntoLines(article, state.lineMaxLength);
+        state.articleLines = lines;
+        let cumLen = 0;
+        state.lineMeta = lines.map((line) => {
+          const meta = { text: line, startIndex: cumLen, endIndex: cumLen + line.length };
+          cumLen += line.length;
+          return meta;
+        });
+        const restoredLines = serverPlayer.lineValues.slice(0, lines.length);
+        state.lineValues = lines.map((_, i) => restoredLines[i] || "");
+        const typedTotal = state.lineValues.reduce((sum, v) => sum + v.length, 0);
+        state.currentLineIndex = 0;
+        let remaining = typedTotal;
+        for (let i = 0; i < lines.length; i += 1) {
+          if (remaining <= lines[i].length) {
+            state.currentLineIndex = i;
+            break;
+          }
+          remaining -= lines[i].length;
+        }
+        state.currentPage = Math.floor(state.currentLineIndex / state.linesPerPage);
+        state.lastRenderedPage = -1;
+        state.stats.totalKeystrokes = serverPlayer.totalKeystrokes || 0;
+        state.stats.errorKeystrokes = serverPlayer.errorKeystrokes || 0;
+        state.stats.correctChars = serverPlayer.correctChars || 0;
+        state.stats.typedLength = serverPlayer.typedLength || 0;
+        state.stats.warningCount = serverPlayer.warningCount || 0;
+        state.stats.shortcutWarnings = serverPlayer.shortcutWarnings || 0;
+        setTimeout(() => { state.racingSinceRestore = false; }, 2000);
+      }
+
+      if (hadRaceData && (state.race.status === "running" || state.race.status === "paused")) {
+        updateDerivedStats();
+        socket.emit("updateProgress", {
+          totalKeystrokes: state.stats.totalKeystrokes,
+          errorKeystrokes: state.stats.errorKeystrokes,
+          correctChars: state.stats.correctChars,
+          backspaceCount: state.stats.backspaceCount,
+          warningCount: state.stats.warningCount,
+          typedLength: state.stats.typedLength,
+          currentInput: state.typedChars.join(""),
+          lineValues: state.lineValues
+        });
+      }
+
       syncViews();
 
       if (state.race.status === "running" || state.race.status === "paused") {
         state.race.articleContent = result.race.articleContent;
         state.race.articleTitle = result.race.articleTitle;
-        showView("race");
+        showView("race", true);
         renderRace();
       } else if (state.race.status === "ended" && !state.stayInWaitView) {
         showResultByLeaderboard(result.leaderboard);
@@ -274,7 +516,7 @@
       return;
     }
 
-    if (state.race.status === "ended" && !state.stayInWaitView) {
+    if ((state.race.status === "submitted" || state.race.status === "ended") && !state.stayInWaitView) {
       showView("result");
       return;
     }
@@ -283,8 +525,8 @@
     showView("wait");
   }
 
-  function showView(viewName) {
-    if (state.currentView === viewName) {
+  function showView(viewName, force = false) {
+    if (!force && state.currentView === viewName) {
       return;
     }
 
@@ -294,7 +536,9 @@
     refs.resultView.classList.toggle("hidden", viewName !== "result");
 
     if (viewName === "race") {
-      setTimeout(() => focusCapture(), 80);
+      requestAnimationFrame(() => {
+        setTimeout(() => focusCapture(), 0);
+      });
     }
 
     state.currentView = viewName;
@@ -325,9 +569,9 @@
     const accuracy =
       typedLength > 0
         ? (correctChars / typedLength) * 100
-        : 100;
+        : 0;
     const progress = state.race.articleContent
-      ? (typedLength / state.race.articleContent.length) * 100
+      ? (correctChars / state.race.articleContent.length) * 100
       : 0;
 
     state.stats.speed = round(speed);
@@ -340,12 +584,11 @@
     refs.articleTitle.textContent = state.race.articleTitle || "比赛文章";
     refs.remainingTime.textContent = formatSeconds(state.race.remainingSeconds || 0);
     refs.speedValue.textContent = formatNumber(state.stats.speed || 0);
-    refs.accuracyValue.textContent = `${formatNumber(state.stats.accuracy || 100)}%`;
+    refs.accuracyValue.textContent = `${formatNumber(state.stats.accuracy)}%`;
     refs.progressValue.textContent = `${formatNumber(state.stats.progress || 0)}%`;
     refs.progressFill.style.width = `${state.stats.progress || 0}%`;
     refs.warningText.textContent = `已输入 ${state.stats.typedLength || 0} 字 / 可按回车切换到下一行`;
-    refs.raceStatusText.textContent =
-      state.race.status === "paused" ? "比赛已暂停，等待裁判继续" : "比赛进行中";
+    updateSocketBadge(socket.connected ? "connected" : "disconnected");
 
     ensureArticleLayout();
     syncCurrentPage();
@@ -440,6 +683,12 @@
       input.addEventListener("keydown", (event) => handleLineKeydown(event, lineIndex));
       input.addEventListener("compositionstart", () => handleCompositionStart(lineIndex));
       input.addEventListener("compositionend", (event) => handleCompositionEnd(event, lineIndex));
+      input.addEventListener("paste", (e) => e.preventDefault());
+      input.addEventListener("cut", (e) => e.preventDefault());
+      input.addEventListener("copy", (e) => e.preventDefault());
+      input.addEventListener("drop", (e) => e.preventDefault());
+      input.addEventListener("dragover", (e) => e.preventDefault());
+      input.addEventListener("dragenter", (e) => e.preventDefault());
 
       lineWrapper.appendChild(textDiv);
       lineWrapper.appendChild(input);
@@ -546,15 +795,6 @@
     return lines;
   }
 
-  function getFirstMismatchIndex() {
-    for (let index = 0; index < state.typedChars.length; index += 1) {
-      if (state.typedChars[index] !== state.race.articleContent[index]) {
-        return index;
-      }
-    }
-    return -1;
-  }
-
   function startHeartbeat() {
     clearInterval(state.heartbeatTimer);
     clearInterval(state.reportTimer);
@@ -566,6 +806,7 @@
       }
     }, 2000);
 
+    let saveTick = 0;
     state.reportTimer = setInterval(() => {
       if (!state.player || state.race.status !== "running") {
         return;
@@ -579,9 +820,15 @@
         backspaceCount: state.stats.backspaceCount,
         warningCount: state.stats.warningCount,
         typedLength: state.stats.typedLength,
-        currentInput: state.typedChars.join("")
+        currentInput: state.typedChars.join(""),
+        lineValues: state.lineValues
       });
       renderRace(false);
+      saveTick += 1;
+      if (saveTick >= 2) {
+        saveTick = 0;
+        saveRaceState();
+      }
     }, 1000);
 
     state.countdownTimer = setInterval(() => {
@@ -612,17 +859,16 @@
 
     refs.resultSummary.textContent = playerResult.disqualified
       ? `本场比赛成绩已取消，原因：${playerResult.disqualifyReason || "失焦违规"}。`
-      : `你已完成比赛，个人排名第 ${playerResult.rank} 名，班级排名第 ${classResult?.rank || "-"} 名。`;
+      : `${state.player.className} / ${state.player.playerName} — 比赛已完成`;
 
     refs.resultGrid.innerHTML = "";
     [
+      ["🏅 个人排名", `<span class="rank-highlight">第 ${playerResult.rank} 名</span>`],
       ["速度", `${formatNumber(playerResult.speed)} 字/分钟`],
       ["准确率", `${formatNumber(playerResult.accuracy)}%`],
       ["得分", formatNumber(playerResult.score)],
       ["已输入字数", String(playerResult.typedLength)],
-      ["正确字数", String(playerResult.correctChars)],
-      ["班级总分", formatNumber(classResult?.totalScore || 0)],
-      ["班级排名", `第 ${classResult?.rank || "-"} 名`]
+      ["正确字数", String(playerResult.correctChars)]
     ].forEach(([label, value]) => {
       const card = document.createElement("div");
       card.className = "mini-card";
@@ -633,10 +879,12 @@
     showView("result");
   }
 
-  function updateSocketBadge(connected) {
-    refs.socketBadge.innerHTML = connected
-      ? '<span class="status-dot"></span> 已连接'
-      : '<span class="status-dot offline"></span> 已断开';
+  function updateSocketBadge(status) {
+    const dotClass = status === "connected" ? "status-dot" : status === "connecting" ? "status-dot status-yellow" : "status-dot status-red";
+    const text = status === "connected" ? "已连接" : status === "connecting" ? "连接中" : "未连接";
+    const html = `<span class="${dotClass}"></span> ${text}`;
+    if (refs.socketBadge) refs.socketBadge.innerHTML = html;
+    if (refs.raceStatusBadge) refs.raceStatusBadge.innerHTML = html;
   }
 
   function focusCapture() {
@@ -666,6 +914,59 @@
     setTimeout(() => item.remove(), 2600);
   }
 
+  function handleSubmit() {
+    if (!state.player) return;
+    if (state.submitting) return;
+
+    if (state.race.status !== "running" && state.race.status !== "paused") {
+      showToast("无法提交", "当前不在比赛状态中。", "error");
+      return;
+    }
+
+    updateDerivedStats();
+
+    if (!confirm("确定要提交比赛成绩吗？提交后不能再继续输入。")) {
+      return;
+    }
+
+    state.submitting = true;
+    clearInterval(state.reportTimer);
+    clearInterval(state.countdownTimer);
+    localStorage.removeItem(raceStateKey);
+
+    refs.submitButton.disabled = true;
+    refs.submitButton.textContent = "⏳ 提交中...";
+
+    let submitTimedOut = false;
+    const submitTimer = setTimeout(() => {
+      if (!submitTimedOut) {
+        submitTimedOut = true;
+        state.submitting = false;
+        refs.submitButton.disabled = false;
+        refs.submitButton.textContent = "提交";
+        showToast("提交超时", "网络异常，请检查连接后重试。", "error");
+      }
+    }, 10000);
+
+    socket.emit("playerSubmit", {
+      totalKeystrokes: state.stats.totalKeystrokes,
+      errorKeystrokes: state.stats.errorKeystrokes,
+      correctChars: state.stats.correctChars,
+      typedLength: state.stats.typedLength,
+      currentInput: state.typedChars.join(""),
+      lineValues: state.lineValues
+    }, (result) => {
+      clearTimeout(submitTimer);
+      if (submitTimedOut) return;
+      if (!result?.success) {
+        state.submitting = false;
+        refs.submitButton.disabled = false;
+        refs.submitButton.textContent = "提交";
+        showToast("提交失败", result?.message || "服务器处理异常", "error");
+      }
+    });
+  }
+
   function formatSeconds(totalSeconds) {
     const safe = Math.max(0, Number(totalSeconds) || 0);
     const minutes = String(Math.floor(safe / 60)).padStart(2, "0");
@@ -691,7 +992,7 @@
       shortcutWarnings: 0,
       typedLength: 0,
       speed: 0,
-      accuracy: 100,
+      accuracy: 0,
       progress: 0
     };
   }
@@ -751,11 +1052,18 @@
     refs.loginButton.disabled = !savedName;
 
     state.studentNames.forEach((name) => {
+      const activeSet = (state.activeOnlinePlayers || []).filter(p => p.className === refs.className.value).map(p => p.playerName);
+      const isDisabled = activeSet.includes(name);
       const button = document.createElement("button");
       button.type = "button";
-      button.className = `name-button ${name === savedName ? "active" : ""}`.trim();
+      button.className = `name-button ${name === savedName ? "active" : ""} ${isDisabled ? "name-disabled" : ""}`.trim();
       button.textContent = name;
+      button.disabled = isDisabled;
+      if (isDisabled) {
+        button.title = "该选手已进入比赛，无法选择";
+      }
       button.addEventListener("click", () => {
+        if (isDisabled) return;
         state.selectedPlayerName = name;
         refs.selectedName.textContent = `已选择：${name}`;
         refs.loginButton.disabled = false;
@@ -821,10 +1129,18 @@
     state.isComposing = true;
     state.composingLineIndex = lineIndex;
     state.currentLineIndex = lineIndex;
+    state.compositionStartTypedLength = state.stats.typedLength;
   }
 
   function handleCompositionEnd(event, lineIndex) {
     state.isComposing = false;
+    if (state.compositionStartTypedLength != null) {
+      const actualAdded = state.stats.typedLength - state.compositionStartTypedLength;
+      if (actualAdded > 1) {
+        state.stats.totalKeystrokes += (actualAdded - 1);
+      }
+      state.compositionStartTypedLength = null;
+    }
     state.composingLineIndex = -1;
     handleLineInput(event, lineIndex, true);
   }
